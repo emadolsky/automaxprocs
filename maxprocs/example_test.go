@@ -23,7 +23,7 @@ package maxprocs_test
 import (
 	"log"
 
-	"go.uber.org/automaxprocs/maxprocs"
+	"github.com/emadolsky/automaxprocs/maxprocs"
 )
 
 func Example() {

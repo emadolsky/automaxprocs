@@ -1,4 +1,4 @@
-module go.uber.org/automaxprocs/tools
+module github.com/emadolsky/automaxprocs/tools
 
 go 1.13
 
