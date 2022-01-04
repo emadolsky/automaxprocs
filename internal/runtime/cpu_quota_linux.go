@@ -31,14 +31,30 @@ import (
 // CPUQuotaToGOMAXPROCS converts the CPU quota applied to the calling process
 // to a valid GOMAXPROCS value.
 func CPUQuotaToGOMAXPROCS(minValue int) (int, CPUQuotaStatus, error) {
-	cgroups, err := cg.NewCGroupsForCurrentProcess()
+	var quota float64
+	var defined bool
+	var err error
+
+	isV2, err := cg.IsCGroupV2()
 	if err != nil {
 		return -1, CPUQuotaUndefined, err
 	}
 
-	quota, defined, err := cgroups.CPUQuota()
-	if !defined || err != nil {
-		return -1, CPUQuotaUndefined, err
+	if isV2 {
+		quota, defined, err = cg.CPUQuotaV2()
+		if !defined || err != nil {
+			return -1, CPUQuotaUndefined, err
+		}
+	} else {
+		cgroups, err := cg.NewCGroupsForCurrentProcess()
+		if err != nil {
+			return -1, CPUQuotaUndefined, err
+		}
+
+		quota, defined, err = cgroups.CPUQuota()
+		if !defined || err != nil {
+			return -1, CPUQuotaUndefined, err
+		}
 	}
 
 	maxProcs := int(math.Floor(quota))

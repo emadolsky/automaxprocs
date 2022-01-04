@@ -18,9 +18,20 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 // THE SOFTWARE.
 
+//go:build linux
 // +build linux
 
 package cgroups
+
+import (
+	"bufio"
+	"fmt"
+	"io"
+	"os"
+	"path"
+	"strconv"
+	"strings"
+)
 
 const (
 	// _cgroupFSType is the Linux CGroup file system type used in
@@ -41,11 +52,24 @@ const (
 	// _cgroupCPUCFSPeriodUsParam is the file name for the CGroup CFS period
 	// parameter.
 	_cgroupCPUCFSPeriodUsParam = "cpu.cfs_period_us"
+
+	// _cgroupv2CPUMax is the file name for the CGroup-V2 CPU max and period
+	// parameter.
+	_cgroupv2CPUMax = "cpu.max"
+	// _cgroupFSType is the Linux CGroup-V2 file system type used in
+	// `/proc/$PID/mountinfo`.
+	_cgroupv2FSType = "cgroup2"
 )
 
 const (
-	_procPathCGroup    = "/proc/self/cgroup"
-	_procPathMountInfo = "/proc/self/mountinfo"
+	_procPathCGroup     = "/proc/self/cgroup"
+	_procPathMountInfo  = "/proc/self/mountinfo"
+	_cgroupv2MountPoint = "/sys/fs/cgroup"
+)
+
+const (
+	_cgroupv2CPUMaxQuota = iota
+	_cgroupv2CPUMaxPeriod
 )
 
 // CGroups is a map that associates each CGroup with its subsystem name.
@@ -114,4 +138,61 @@ func (cg CGroups) CPUQuota() (float64, bool, error) {
 	}
 
 	return float64(cfsQuotaUs) / float64(cfsPeriodUs), true, nil
+}
+
+func IsCGroupV2() (bool, error) {
+	isV2 := false
+	isV1 := false
+	newMountPoint := func(mp *MountPoint) error {
+		if mp.FSType == _cgroupv2FSType {
+			isV2 = true
+		}
+		if mp.FSType == _cgroupFSType {
+			isV1 = true
+		}
+		return nil
+	}
+	if err := parseMountInfo(_procPathMountInfo, newMountPoint); err != nil {
+		return false, err
+	}
+	if isV1 {
+		return false, nil
+	}
+	if isV2 {
+		return true, nil
+	}
+	return false, fmt.Errorf("could not find cgroup mount")
+}
+
+func CPUQuotaV2() (float64, bool, error) {
+	cpuMaxParams, err := os.Open(path.Join(_cgroupv2MountPoint, _cgroupv2CPUMax))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, false, nil
+		}
+		return 0, false, err
+	}
+	scanner := bufio.NewScanner(cpuMaxParams)
+	if scanner.Scan() {
+		fields := strings.Fields(scanner.Text())
+		if len(fields) != 2 {
+			return 0, false, fmt.Errorf("invalid format")
+		}
+		if fields[0] == "max" {
+			return 0, false, nil
+		}
+		max, err := strconv.Atoi(fields[_cgroupv2CPUMaxQuota])
+		if err != nil {
+			return 0, true, err
+		}
+		period, err := strconv.Atoi(fields[_cgroupv2CPUMaxPeriod])
+		if err != nil {
+			return 0, true, err
+		}
+		return float64(max) / float64(period), true, nil
+	}
+	if err := scanner.Err(); err != nil {
+		return 0, true, err
+	}
+	return 0, true, io.ErrUnexpectedEOF
 }

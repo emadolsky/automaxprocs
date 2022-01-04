@@ -1,4 +1,4 @@
-package: go.uber.org/automaxprocs
+package: github.com/emadolsky/automaxprocs
 import: []
 testImport:
 - package: github.com/stretchr/testify
